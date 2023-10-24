@@ -1,18 +1,29 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log"
-	"net"
 
 	"github.com/gabrielopesantos/keyval/internal/server"
 )
 
+var (
+	listenPort int
+)
+
+func init() {
+	flag.IntVar(&listenPort, "listen", 22122, "Port on which process listens")
+}
+
 func main() {
-	tcpListener, err := net.Listen("tcp", "127.0.0.1:22122")
+	flag.Parse()
+
+	addr := fmt.Sprintf("127.0.0.1:%d", listenPort)
+	srv, err := server.New(addr)
 	if err != nil {
-		log.Fatalf("could not listening for connections on addr '127.0.0.1:22122': %s", err)
+		log.Fatalf("could not start listening for connections on addr '%s': %s", addr, err)
 	}
 
-	srv := server.NewServerFromListener(tcpListener)
 	srv.AcceptConns()
 }
