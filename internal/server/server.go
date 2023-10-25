@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	// "bytes"
-	"io"
+
 	"log"
 	"net"
 	"sync"
@@ -20,9 +20,8 @@ const (
 // Server is the entity that binds all components from the key value data store,
 // listeners, storage interface, session interface, worker;
 type Server struct {
-	listener      net.Listener               // UDP isn't a listener;
-	storage       sync.Map                   // Will eventually be a storageManager
-	knownCommands map[string]command.Command // This would be in the worker or something;
+	listener net.Listener // UDP isn't a listener;
+	storage  sync.Map     // Will eventually be a storageManager
 }
 
 func New(addr string) (*Server, error) {
@@ -35,9 +34,8 @@ func New(addr string) (*Server, error) {
 
 func NewServerFromListener(listener net.Listener) *Server {
 	return &Server{
-		listener:      listener,
-		storage:       sync.Map{},
-		knownCommands: map[string]command.Command{"PING": &command.PingCommand{}},
+		listener: listener,
+		storage:  sync.Map{},
 	}
 }
 
@@ -59,41 +57,31 @@ func (s *Server) processConn(conn net.Conn) {
 	defer conn.Close() // Returns err
 
 	connReader := bufio.NewReader(conn)
-	command, err := connReader.ReadString('\n')
+	cmdLiteral, err := connReader.ReadString(' ')
 	if err != nil {
-		if err == io.EOF {
-			log.Printf("INFO: connection closed before reading command: %s", err)
-		}
-		log.Printf("ERROR: unexpected error while reading message command: %s", err)
-	}
-
-	// Partial read until command is read; If not known, stop reading;
-	command = strings.Trim(command, "\n\r ") // Is it a good idea to do this?
-	log.Printf("INFO: '%s' command invoked", command)
-	commandManager, ok := s.knownCommands[command]
-	if !ok {
-		log.Printf("ERROR: Unknown command, closing connection;") // Close conn?
-	}
-
-	// readBuffer := make([]byte, DEFAULT_READ_BUFFER_SIZE)
-	if command == "PING" {
-		goto noParameterCommands
-	}
-	// _, err = connReader.Read(readBuffer)
-	// if err != nil {
-	// 	log.Printf("ERROR: could not read incoming message: %s", err)
-	// 	return
-	// }
-
-	// NOTE: For commands like `PING` that have nothing after command this isn't needed;
-noParameterCommands:
-	err = commandManager.Parse(connReader)
-	if err != nil {
-		log.Printf("ERROR: Could not parse command parameters;")
+		log.Printf("ERROR: could not read command: %s", err)
 		return
 	}
+	cmdLiteral = strings.Trim(cmdLiteral, "\n\r ")
+
+	commandManager, err := command.NewCommand(cmdLiteral)
+	if err != nil {
+		log.Printf("ERROR: could not get command manager for command literal '%s': %s", err, cmdLiteral)
+		// Write something back
+		return
+	}
+
+	if command.HasAdditionalArguments(cmdLiteral) {
+		err = commandManager.Parse(connReader)
+		if err != nil {
+			log.Printf("ERROR: could not parse command: %s", err)
+			// Write something back
+			return
+		}
+	}
+
 	// Might need some references; Worker or something;
-	responseMessage := commandManager.Exec()
+	responseMessage := commandManager.Exec(&s.storage)
 
 	log.Printf("INFO: Sending: '%s'", responseMessage)
 	n, err := conn.Write(responseMessage)
