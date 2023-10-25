@@ -9,6 +9,8 @@ import (
 	"log"
 	"net"
 	"sync"
+
+	"github.com/gabrielopesantos/keyval/internal/command"
 )
 
 const (
@@ -18,9 +20,9 @@ const (
 // Server is the entity that binds all components from the key value data store,
 // listeners, storage interface, session interface, worker;
 type Server struct {
-	listener      net.Listener       // UDP isn't a listener;
-	storage       sync.Map           // Will eventually be a storageManager
-	knownCommands map[string]Command // This would be in the worker or something;
+	listener      net.Listener               // UDP isn't a listener;
+	storage       sync.Map                   // Will eventually be a storageManager
+	knownCommands map[string]command.Command // This would be in the worker or something;
 }
 
 func New(addr string) (*Server, error) {
@@ -35,7 +37,7 @@ func NewServerFromListener(listener net.Listener) *Server {
 	return &Server{
 		listener:      listener,
 		storage:       sync.Map{},
-		knownCommands: map[string]Command{"PING": &PingCommand{}},
+		knownCommands: map[string]command.Command{"PING": &command.PingCommand{}},
 	}
 }
 
@@ -73,24 +75,25 @@ func (s *Server) processConn(conn net.Conn) {
 		log.Printf("ERROR: Unknown command, closing connection;") // Close conn?
 	}
 
-	readBuffer := make([]byte, DEFAULT_READ_BUFFER_SIZE)
+	// readBuffer := make([]byte, DEFAULT_READ_BUFFER_SIZE)
 	if command == "PING" {
 		goto noParameterCommands
 	}
-	_, err = connReader.Read(readBuffer)
-	if err != nil {
-		log.Printf("ERROR: could not read incoming message: %s", err)
-		return
-	}
+	// _, err = connReader.Read(readBuffer)
+	// if err != nil {
+	// 	log.Printf("ERROR: could not read incoming message: %s", err)
+	// 	return
+	// }
 
 	// NOTE: For commands like `PING` that have nothing after command this isn't needed;
 noParameterCommands:
-	err = commandManager.Parse(readBuffer)
+	err = commandManager.Parse(connReader)
 	if err != nil {
 		log.Printf("ERROR: Could not parse command parameters;")
 		return
 	}
-	responseMessage := commandManager.Exec(s)
+	// Might need some references; Worker or something;
+	responseMessage := commandManager.Exec()
 
 	log.Printf("INFO: Sending: '%s'", responseMessage)
 	n, err := conn.Write(responseMessage)
@@ -105,25 +108,4 @@ noParameterCommands:
 			return
 		}
 	}
-}
-
-type Command interface {
-	Exec(server *Server) []byte
-	Parse(commandParameters []byte) error
-}
-
-type PingCommand struct{}
-
-// Also be a String method?
-
-// func NewPingCommand() Command {
-// 	return &PingCommand{}
-// }
-
-func (c *PingCommand) Parse(commandParameters []byte) error {
-	return nil
-}
-
-func (c *PingCommand) Exec(server *Server) []byte {
-	return []byte("PONG")
 }
