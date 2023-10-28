@@ -27,7 +27,7 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(loggingLevel)}))
 	srv, err := server.New(addr, logger)
 	if err != nil {
-		logger.Error("could not start listening for connections on addr '%s': %s", addr, err)
+		logger.Error(fmt.Sprintf("could not start listening for connections on addr '%s': %s", addr, err))
 	}
 
 	srv.AcceptConns()

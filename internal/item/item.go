@@ -19,14 +19,24 @@ type Item struct {
 
 // RETURN Pointer or actual item?
 func New(key string, value []byte, flags uint8, ttl uint64) *Item {
+	item := InitItem()
+	item.Key = key
+	item.Value = value
+	item.Flags = flags
+	item.TTL = ttl
+
+	return item
+}
+
+func InitItem() *Item {
 	now := time.Now()
 	return &Item{
-		Key:       key,
-		Value:     value,
-		Flags:     flags,
-		TTL:       ttl,
 		createdAt: now,
 		updatedAt: now,
 		isValid:   true,
 	}
+}
+
+func (i *Item) Touch() {
+	i.updatedAt = time.Now()
 }

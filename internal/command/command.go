@@ -1,7 +1,6 @@
 package command
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -11,7 +10,7 @@ import (
 )
 
 const (
-	PARAMETERS_DELIMITER = ' '
+	PARAMETERS_DELIMITER = ' ' // NOTE: Not used
 )
 
 type CommandFactory func(*slog.Logger) Command
@@ -25,7 +24,7 @@ var commandFactories = map[string]CommandFactory{
 func NewCommand(command string, logger *slog.Logger) (Command, error) {
 	factory, ok := commandFactories[command]
 	if !ok {
-		return nil, errors.New("ErrUnknownCommand") // ErrUnknownCommand
+		return nil, UnknownCommandError
 	}
 	return factory(logger), nil
 }
@@ -44,7 +43,7 @@ type PingCommand struct {
 	logger *slog.Logger
 }
 
-// Also be a String method?
+// Also have a String method?
 
 func NewPingCommand(logger *slog.Logger) Command {
 	return &PingCommand{logger: logger}
@@ -76,7 +75,7 @@ func (c *GetCommand) Parse(argsReader io.Reader) error {
 		return err
 	}
 	if parsedItems == 0 {
-		return errors.New("ErrInvalidCommandArguments")
+		return InvalidCommandArgumentsError
 	}
 	c.Key = key
 
@@ -93,6 +92,7 @@ func (c *GetCommand) Exec(storage *sync.Map) []byte {
 	itemValue, ok := value.(*item.Item)
 	if !ok {
 		// NOTE: Not expected to happen
+		c.logger.Warn("Unexpected condition evaluated:") // TODO:
 		return []byte("ERROR: Could not parse stored key\r\n")
 	}
 
@@ -100,11 +100,7 @@ func (c *GetCommand) Exec(storage *sync.Map) []byte {
 }
 
 type AddCommand struct {
-	// Types
-	Key    string
-	Val    []byte
-	Flags  uint8
-	TTL    uint64
+	item   *item.Item
 	logger *slog.Logger
 }
 
@@ -113,26 +109,27 @@ func NewAddCommand(logger *slog.Logger) Command {
 }
 
 func (c *AddCommand) Parse(argsReader io.Reader) error {
+	item := item.InitItem()
 	// key flags ttl val_size value
 	expectedArguments := 5
 	format := "%s %d %d %d\r\n%s\r\n"
 	var valSize uint
 	// Consider reading "header" first and read value from chars in valSize
-	arguments := []interface{}{&c.Key, &c.Flags, &c.TTL, &valSize, &c.Val}
+	arguments := []interface{}{&item.Key, &item.Flags, &item.TTL, &valSize, &item.Value}
 	parsedItems, err := fmt.Fscanf(argsReader, format, arguments...)
 	if err != nil && err != io.EOF {
 		return err
 	}
 	if parsedItems != expectedArguments {
-		return errors.New("ErrInvalidCommandArguments")
+		return InvalidCommandArgumentsError
 	}
+	c.item = item
 
 	return nil
 }
 
 func (c *AddCommand) Exec(storage *sync.Map) []byte {
-	item := item.New(c.Key, c.Val, c.Flags, c.TTL)
-	c.logger.Debug(fmt.Sprintf("ADD - Key: %s; Value: %v", c.Key, item))
-	storage.Store(c.Key, item)
+	c.logger.Debug(fmt.Sprintf("ADD - Key: %s; Value: %v", c.item.Key, c.item))
+	storage.Store(c.item.Key, c.item)
 	return []byte("STORED\r\n")
 }
