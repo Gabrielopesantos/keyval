@@ -82,8 +82,7 @@ func (c *AddCommand) Parse(argsReader io.Reader) error {
 
 func (c *AddCommand) Exec(storage *sync.Map) []byte {
 	item := item.New(c.Key, c.Val, c.Flags, c.TTL)
-	fmt.Printf("About to store: %+v", item)
-	storage.Store(c.Key, &item)
+	storage.Store(c.Key, item)
 	return []byte("STORED")
 }
 
