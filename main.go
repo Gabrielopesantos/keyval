@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/gabrielopesantos/keyval/internal/server"
+	"github.com/gabrielopesantos/keyval/internal/storage"
 )
 
 var (
@@ -22,10 +23,11 @@ func init() {
 func main() {
 	flag.Parse()
 
-	addr := fmt.Sprintf("127.0.0.1:%d", listenPort)
-	// TODO: Handler and writer should also be configurable
 	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.Level(loggingLevel)}))
-	srv, err := server.New(addr, logger)
+	addr := fmt.Sprintf("127.0.0.1:%d", listenPort)
+	storageManager := storage.NewSyncMapStorage(false, logger)
+	// TODO: Handler and writer should also be configurable
+	srv, err := server.New(addr, storageManager, logger)
 	if err != nil {
 		logger.Error(fmt.Sprintf("could not start listening for connections on addr '%s': %s", addr, err))
 	}

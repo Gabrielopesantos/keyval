@@ -4,29 +4,29 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
-	"sync"
 
 	"github.com/gabrielopesantos/keyval/internal/item"
+	"github.com/gabrielopesantos/keyval/internal/storage"
 )
 
 const (
 	PARAMETERS_DELIMITER = ' ' // NOTE: Not used
 )
 
-type CommandFactory func(*slog.Logger) Command
+type Factory func(storageManager storage.Manager, logger *slog.Logger) Command
 
-var commandFactories = map[string]CommandFactory{
+var commandFactories = map[string]Factory{
 	"PING": NewPingCommand,
 	"GET":  NewGetCommand,
 	"ADD":  NewAddCommand,
 }
 
-func NewCommand(command string, logger *slog.Logger) (Command, error) {
+func NewCommand(command string, storageManager storage.Manager, logger *slog.Logger) (Command, error) {
 	factory, ok := commandFactories[command]
 	if !ok {
 		return nil, UnknownCommandError
 	}
-	return factory(logger), nil
+	return factory(storageManager, logger), nil
 }
 
 func HasAdditionalArguments(command string) bool {
@@ -34,36 +34,40 @@ func HasAdditionalArguments(command string) bool {
 }
 
 type Command interface {
-	// "storage"
-	Exec(storage *sync.Map) []byte
+	Exec() ([]byte, error)
 	Parse(argsReader io.Reader) error
 }
 
+type BaseCommand struct {
+	storageManager storage.Manager
+	logger         *slog.Logger
+}
+
 type PingCommand struct {
-	logger *slog.Logger
+	BaseCommand
 }
 
 // Also have a String method?
 
-func NewPingCommand(logger *slog.Logger) Command {
-	return &PingCommand{logger: logger}
+func NewPingCommand(storageManager storage.Manager, logger *slog.Logger) Command {
+	return &PingCommand{BaseCommand{storageManager, logger}}
 }
 
 func (c *PingCommand) Parse(argsReader io.Reader) error {
 	return nil
 }
 
-func (c *PingCommand) Exec(storage *sync.Map) []byte {
-	return []byte("PONG\r\n")
+func (c *PingCommand) Exec() ([]byte, error) {
+	return []byte("PONG\r\n"), nil
 }
 
 type GetCommand struct {
-	Key    string
-	logger *slog.Logger
+	BaseCommand
+	Key string
 }
 
-func NewGetCommand(logger *slog.Logger) Command {
-	return &GetCommand{logger: logger}
+func NewGetCommand(storageManager storage.Manager, logger *slog.Logger) Command {
+	return &GetCommand{BaseCommand: BaseCommand{storageManager, logger}}
 }
 
 func (c *GetCommand) Parse(argsReader io.Reader) error {
@@ -82,30 +86,22 @@ func (c *GetCommand) Parse(argsReader io.Reader) error {
 	return nil
 }
 
-func (c *GetCommand) Exec(storage *sync.Map) []byte {
+func (c *GetCommand) Exec() ([]byte, error) {
 	c.logger.Debug(fmt.Sprintf("GET - Key: %s", c.Key))
-	value, ok := storage.Load(c.Key)
-	if !ok {
-		return []byte("ERROR: Key not found\r\n")
+	item, err := c.storageManager.Get(c.Key)
+	if err != nil {
+		return nil, err
 	}
-
-	itemValue, ok := value.(*item.Item)
-	if !ok {
-		// NOTE: Not expected to happen
-		c.logger.Warn("Unexpected condition evaluated:") // TODO:
-		return []byte("ERROR: Could not parse stored key\r\n")
-	}
-
-	return []byte(fmt.Sprintf("%s\r\n", itemValue.Value))
+	return []byte(fmt.Sprintf("%s\r\n", item.Value)), nil
 }
 
 type AddCommand struct {
-	item   *item.Item
-	logger *slog.Logger
+	BaseCommand
+	item *item.Item
 }
 
-func NewAddCommand(logger *slog.Logger) Command {
-	return &AddCommand{logger: logger}
+func NewAddCommand(storageManager storage.Manager, logger *slog.Logger) Command {
+	return &AddCommand{BaseCommand: BaseCommand{storageManager, logger}}
 }
 
 func (c *AddCommand) Parse(argsReader io.Reader) error {
@@ -128,8 +124,10 @@ func (c *AddCommand) Parse(argsReader io.Reader) error {
 	return nil
 }
 
-func (c *AddCommand) Exec(storage *sync.Map) []byte {
+func (c *AddCommand) Exec() ([]byte, error) {
 	c.logger.Debug(fmt.Sprintf("ADD - Key: %s; Value: %v", c.item.Key, c.item))
-	storage.Store(c.item.Key, c.item)
-	return []byte("STORED\r\n")
+	if err := c.storageManager.Add(c.item); err != nil {
+		return nil, err
+	}
+	return []byte("STORED\r\n"), nil
 }

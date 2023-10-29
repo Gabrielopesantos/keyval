@@ -7,10 +7,9 @@ import (
 	"os"
 	"strings"
 
-	"net"
-	"sync"
-
 	"github.com/gabrielopesantos/keyval/internal/command"
+	"github.com/gabrielopesantos/keyval/internal/storage"
+	"net"
 )
 
 const (
@@ -20,28 +19,28 @@ const (
 // Server is the entity that binds all components from the key value data store,
 // listeners, storage interface, session interface, worker;
 type Server struct {
-	listener net.Listener // UDP isn't a listener;
-	storage  sync.Map     // Will eventually be a storageManager
-	logger   *slog.Logger
+	listener       net.Listener // UDP isn't a listener;
+	storageManager storage.Manager
+	logger         *slog.Logger
 }
 
-func New(addr string, logger *slog.Logger) (*Server, error) {
+func New(addr string, storageManager storage.Manager, logger *slog.Logger) (*Server, error) {
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		return nil, err
 	}
-	return NewServerFromListener(listener, logger), nil
+	return NewServerFromListener(listener, storageManager, logger), nil
 }
 
-func NewServerFromListener(listener net.Listener, logger *slog.Logger) *Server {
+func NewServerFromListener(listener net.Listener, storageManager storage.Manager, logger *slog.Logger) *Server {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	}
 
 	return &Server{
-		listener: listener,
-		storage:  sync.Map{},
-		logger:   logger,
+		listener:       listener,
+		storageManager: storageManager,
+		logger:         logger,
 	}
 }
 
@@ -71,7 +70,7 @@ func (s *Server) processConn(conn net.Conn) {
 	}
 	cmdLiteral = strings.Trim(cmdLiteral, "\n\r ")
 
-	commandManager, err := command.NewCommand(cmdLiteral, s.logger)
+	commandManager, err := command.NewCommand(cmdLiteral, s.storageManager, s.logger)
 	if err != nil {
 		s.logger.Error(fmt.Sprintf("could not get command manager for command literal '%s': %s", err, cmdLiteral))
 		// Write something back
@@ -88,7 +87,10 @@ func (s *Server) processConn(conn net.Conn) {
 	}
 
 	// Might need some references; Worker or something;
-	responseMessage := commandManager.Exec(&s.storage)
+	responseMessage, err := commandManager.Exec()
+	if err != nil {
+		s.logger.Error(fmt.Sprintf("Could not process request: %s", err)) // ???
+	}
 
 	s.logger.Debug(fmt.Sprintf("message to write: '%s'", responseMessage))
 	n, err := conn.Write(responseMessage)
