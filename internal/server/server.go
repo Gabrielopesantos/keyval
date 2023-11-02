@@ -68,7 +68,7 @@ func (s *Server) processConn(conn net.Conn) {
 	respMessage, err := s.parseAndExecuteCommand(connReader)
 	s.logger.Debug(fmt.Sprintf("response message: '%s'", respMessage))
 	if err != nil {
-		s.logger.Error("failed to interpret message: %s", err)
+		s.logger.Error(fmt.Sprintf("failed to interpret message: %s", err))
 	}
 
 	n, err := conn.Write(respMessage)
@@ -106,7 +106,7 @@ func (s *Server) parseAndExecuteCommand(connReader *bufio.Reader) ([]byte, error
 
 	respMessage, err := commandManager.Exec()
 	if err != nil {
-		return nil, fmt.Errorf("could not execute requested command: %s", err)
+		return respMessage, fmt.Errorf("could not execute requested command: %s", err)
 	}
 
 	return respMessage, nil

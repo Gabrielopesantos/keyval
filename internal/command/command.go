@@ -137,7 +137,7 @@ func (c *AddCommand) Parse(argsReader io.Reader) error {
 }
 
 func (c *AddCommand) Exec() ([]byte, error) {
-	c.logger.Debug(fmt.Sprintf("ADD - Key: %s; Value: %v", c.item.Key, c.item))
+	c.logger.Debug(fmt.Sprintf("ADD - Key: %s; Value: %s; Flags: %d; TTL: %d", c.item.Key, c.item.Value, c.item.Flags, c.item.TTL))
 	if err := c.storageManager.Add(c.item); err != nil {
 		return KEY_EXISTS_ERROR_RESP, err
 	}
