@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"log/slog"
 	"os"
 	"strings"
@@ -62,47 +63,51 @@ func (s *Server) AcceptConns() {
 func (s *Server) processConn(conn net.Conn) {
 	defer conn.Close() // Returns err
 
+	// Parse and execute command
 	connReader := bufio.NewReader(conn)
-	cmdLiteral, err := connReader.ReadString(' ')
+	respMessage, err := s.parseAndExecuteCommand(connReader)
+	s.logger.Debug(fmt.Sprintf("response message: '%s'", respMessage))
 	if err != nil {
-		s.logger.Error(fmt.Sprintf("could not read command: %s", err))
-		return
-	}
-	cmdLiteral = strings.Trim(cmdLiteral, "\n\r ")
-
-	commandManager, err := command.NewCommand(cmdLiteral, s.storageManager, s.logger)
-	if err != nil {
-		s.logger.Error(fmt.Sprintf("could not get command manager for command literal '%s': %s", err, cmdLiteral))
-		// Write something back
-		return
+		s.logger.Error("failed to interpret message: %s", err)
 	}
 
-	if command.HasAdditionalArguments(cmdLiteral) {
-		err = commandManager.Parse(connReader)
-		if err != nil {
-			s.logger.Error(fmt.Sprintf("could not parse command: %s", err))
-			// Write something back
-			return
-		}
-	}
-
-	// Might need some references; Worker or something;
-	responseMessage, err := commandManager.Exec()
-	if err != nil {
-		s.logger.Error(fmt.Sprintf("Could not process request: %s", err)) // ???
-	}
-
-	s.logger.Debug(fmt.Sprintf("message to write: '%s'", responseMessage))
-	n, err := conn.Write(responseMessage)
+	n, err := conn.Write(respMessage)
 	if err != nil {
 		s.logger.Error(fmt.Sprintf("could not write response: %s", err))
 		return
 	}
-	for n != len(responseMessage) {
-		n, err = conn.Write(responseMessage[n:])
+	for n != len(respMessage) {
+		n, err = conn.Write(respMessage[n:])
 		if err != nil {
 			s.logger.Error(fmt.Sprintf("could not write response: %s", err))
 			return
 		}
 	}
+}
+
+func (s *Server) parseAndExecuteCommand(connReader *bufio.Reader) ([]byte, error) {
+	cmdLiteral, err := connReader.ReadString(' ')
+	if err != nil && err != io.EOF {
+		return command.READ_COMMAND_ERROR_RESP, fmt.Errorf("could not read message command: %s", err)
+	}
+	cmdLiteral = strings.Trim(cmdLiteral, "\n\r ")
+
+	commandManager := command.NewCommand(cmdLiteral, s.storageManager, s.logger)
+	if commandManager == nil {
+		return command.UNKNOWN_COMMAND_ERROR_RESP, fmt.Errorf("invalid command provided, '%s', could not create a command manager", cmdLiteral)
+	}
+
+	if command.HasAdditionalArguments(cmdLiteral) {
+		err = commandManager.Parse(connReader)
+		if err != nil {
+			return command.PARSE_COMMAND_ERROR_RESP, fmt.Errorf("could not parse command arguments: %s", err)
+		}
+	}
+
+	respMessage, err := commandManager.Exec()
+	if err != nil {
+		return nil, fmt.Errorf("could not execute requested command: %s", err)
+	}
+
+	return respMessage, nil
 }

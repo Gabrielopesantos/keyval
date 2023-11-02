@@ -9,8 +9,18 @@ import (
 	"github.com/gabrielopesantos/keyval/internal/storage"
 )
 
-const (
-	PARAMETERS_DELIMITER = ' ' // NOTE: Not used
+// NOTE: Maybe these shouldn't be here?
+var (
+	// PARAMETERS_DELIMITER                 = ' '
+	CR_LF                                = []byte("\r\n")
+	PONG_RESP                            = []byte("PONG\r\n")
+	OK_RESP                              = []byte("Ok\r\n")
+	READ_COMMAND_ERROR_RESP              = []byte("ErrReadCommand\r\n")
+	UNKNOWN_COMMAND_ERROR_RESP           = []byte("ErrUnknownCommand\r\n")
+	PARSE_COMMAND_ERROR_RESP             = []byte("ErrParseCommand\r\n")
+	INVALID_COMMNAD_ARGUMENTS_ERROR_RESP = []byte("ErrInvalidCommandArguments\r\n")
+	KEY_EXISTS_ERROR_RESP                = []byte("ErrKeyExists\r\n")
+	KEY_NOT_EXISTS_ERROR_RESP            = []byte("ErrKeyNotExists\r\n")
 )
 
 type Factory func(storageManager storage.Manager, logger *slog.Logger) Command
@@ -21,12 +31,12 @@ var commandFactories = map[string]Factory{
 	"ADD":  NewAddCommand,
 }
 
-func NewCommand(command string, storageManager storage.Manager, logger *slog.Logger) (Command, error) {
+func NewCommand(command string, storageManager storage.Manager, logger *slog.Logger) Command {
 	factory, ok := commandFactories[command]
 	if !ok {
-		return nil, UnknownCommandError
+		return nil
 	}
-	return factory(storageManager, logger), nil
+	return factory(storageManager, logger)
 }
 
 func HasAdditionalArguments(command string) bool {
@@ -58,7 +68,7 @@ func (c *PingCommand) Parse(argsReader io.Reader) error {
 }
 
 func (c *PingCommand) Exec() ([]byte, error) {
-	return []byte("PONG\r\n"), nil
+	return PONG_RESP, nil
 }
 
 type GetCommand struct {
@@ -79,7 +89,7 @@ func (c *GetCommand) Parse(argsReader io.Reader) error {
 		return err
 	}
 	if parsedItems == 0 {
-		return InvalidCommandArgumentsError
+		return fmt.Errorf("number of parsed items (%d) differs from the expected, 1", parsedItems)
 	}
 	c.Key = key
 
@@ -90,8 +100,10 @@ func (c *GetCommand) Exec() ([]byte, error) {
 	c.logger.Debug(fmt.Sprintf("GET - Key: %s", c.Key))
 	item, err := c.storageManager.Get(c.Key)
 	if err != nil {
-		return nil, err
+		// TODO: Can also be a different error
+		return KEY_NOT_EXISTS_ERROR_RESP, err
 	}
+	// TODO
 	return []byte(fmt.Sprintf("%s\r\n", item.Value)), nil
 }
 
@@ -117,7 +129,7 @@ func (c *AddCommand) Parse(argsReader io.Reader) error {
 		return err
 	}
 	if parsedItems != expectedArguments {
-		return InvalidCommandArgumentsError
+		return fmt.Errorf("number of parsed items (%d) differs from the expected, %d", parsedItems, expectedArguments)
 	}
 	c.item = item
 
@@ -127,7 +139,8 @@ func (c *AddCommand) Parse(argsReader io.Reader) error {
 func (c *AddCommand) Exec() ([]byte, error) {
 	c.logger.Debug(fmt.Sprintf("ADD - Key: %s; Value: %v", c.item.Key, c.item))
 	if err := c.storageManager.Add(c.item); err != nil {
-		return nil, err
+		return KEY_EXISTS_ERROR_RESP, err
 	}
+	// TODO
 	return []byte("STORED\r\n"), nil
 }

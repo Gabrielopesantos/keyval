@@ -2,6 +2,7 @@ package storage
 
 import (
 	"errors"
+	"fmt"
 	"github.com/gabrielopesantos/keyval/internal/item"
 	"log/slog"
 	"sync"
@@ -31,12 +32,13 @@ func NewSyncMapStorage(TTLCleanupEnabled bool, logger *slog.Logger) *SyncMapStor
 func (s *SyncMapStorageManager) Get(key string) (*item.Item, error) {
 	value, ok := s.storageMap.Load(key)
 	if !ok {
-		return nil, errors.New("key not found")
+		return nil, fmt.Errorf("provided key not found: '%s'", key)
 	}
 
 	itemValue, ok := value.(*item.Item)
 	if !ok {
-		s.logger.Warn("Unexpected condition evaluated") // TODO: Complete description
+		s.logger.Error("unexpected condition evaluated: item should be castable to *item.Item") // TODO: Complete description
+		// Should be a different Error
 		return nil, errors.New("could not parse stored key")
 	}
 
@@ -46,7 +48,7 @@ func (s *SyncMapStorageManager) Get(key string) (*item.Item, error) {
 func (s *SyncMapStorageManager) Add(item *item.Item) error {
 	if _, ok := s.storageMap.Load(item.Key); ok {
 		// NOTE: Create an error for this
-		return errors.New("ErrKeyExists")
+		return fmt.Errorf("provided key has already been stored: '%s'", item.Key)
 	}
 	s.storageMap.Store(item.Key, item)
 	return nil
