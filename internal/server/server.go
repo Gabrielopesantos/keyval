@@ -92,19 +92,19 @@ func (s *Server) parseAndExecuteCommand(connReader *bufio.Reader) ([]byte, error
 	}
 	cmdLiteral = strings.Trim(cmdLiteral, "\n\r ")
 
-	commandManager := command.NewCommand(cmdLiteral, s.storageManager, s.logger)
-	if commandManager == nil {
-		return command.UNKNOWN_COMMAND_ERROR_RESP, fmt.Errorf("invalid command provided, '%s', could not create a command manager", cmdLiteral)
+	commandExecutor := command.NewCommand(cmdLiteral, s.storageManager, s.logger)
+	if commandExecutor == nil {
+		return command.UNKNOWN_COMMAND_ERROR_RESP, fmt.Errorf("unknown command provided, '%s'", cmdLiteral)
 	}
 
-	if command.HasAdditionalArguments(cmdLiteral) {
-		err = commandManager.Parse(connReader)
+	if command.HasArguments(cmdLiteral) {
+		err = commandExecutor.Parse(connReader)
 		if err != nil {
 			return command.PARSE_COMMAND_ERROR_RESP, fmt.Errorf("could not parse command arguments: %s", err)
 		}
 	}
 
-	respMessage, err := commandManager.Exec()
+	respMessage, err := commandExecutor.Exec()
 	if err != nil {
 		return respMessage, fmt.Errorf("could not execute requested command: %s", err)
 	}

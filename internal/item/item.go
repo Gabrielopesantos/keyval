@@ -3,8 +3,7 @@ package item
 import "time"
 
 type Item struct {
-	// Item identifier
-	// Cannot contain spaces, escaped characters
+	// Item identifier (Cannot contain spaces or escaped characters)
 	Key string
 	// Item content
 	Value []byte
@@ -17,7 +16,6 @@ type Item struct {
 	isValid   bool
 }
 
-// RETURN Pointer or actual item?
 func New(key string, value []byte, flags uint8, ttl uint64) *Item {
 	item := InitItem()
 	item.Key = key

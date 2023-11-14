@@ -11,7 +11,7 @@ import (
 
 // NOTE: Maybe these shouldn't be here?
 var (
-	// PARAMETERS_DELIMITER                 = ' '
+	PARAMETERS_DELIMITER                 = ' '
 	CR_LF                                = []byte("\r\n")
 	PONG_RESP                            = []byte("PONG\r\n")
 	OK_RESP                              = []byte("Ok\r\n")
@@ -29,6 +29,7 @@ var commandFactories = map[string]Factory{
 	"PING": NewPingCommand,
 	"GET":  NewGetCommand,
 	"ADD":  NewAddCommand,
+	"DEL":  NewDeleteCommand,
 }
 
 func NewCommand(command string, storageManager storage.Manager, logger *slog.Logger) Command {
@@ -39,13 +40,13 @@ func NewCommand(command string, storageManager storage.Manager, logger *slog.Log
 	return factory(storageManager, logger)
 }
 
-func HasAdditionalArguments(command string) bool {
+func HasArguments(command string) bool {
 	return command != "PING"
 }
 
 type Command interface {
-	Exec() ([]byte, error)
 	Parse(argsReader io.Reader) error
+	Exec() ([]byte, error)
 }
 
 type BaseCommand struct {
@@ -89,7 +90,7 @@ func (c *GetCommand) Parse(argsReader io.Reader) error {
 		return err
 	}
 	if parsedItems == 0 {
-		return fmt.Errorf("number of parsed items (%d) differs from the expected, 1", parsedItems)
+		return fmt.Errorf("number of parsed arguments (%d) differs from the expected, 1", parsedItems)
 	}
 	c.Key = key
 
@@ -143,4 +144,36 @@ func (c *AddCommand) Exec() ([]byte, error) {
 	}
 	// TODO
 	return []byte("STORED\r\n"), nil
+}
+
+type DeleteCommand struct {
+	BaseCommand
+	Key string
+}
+
+// NOTE: Reconsider these, New*Command,  functions
+func NewDeleteCommand(storageManager storage.Manager, logger *slog.Logger) Command {
+	return &DeleteCommand{BaseCommand: BaseCommand{storageManager, logger}}
+}
+
+func (c *DeleteCommand) Parse(argsReader io.Reader) error {
+	format := "%s\r\n"
+	var key string
+	parsedItems, err := fmt.Fscanf(argsReader, format, &key)
+	// NOTE: err != io.EOF
+	if err != nil && err != io.EOF {
+		return err
+	}
+	if parsedItems == 0 {
+		return fmt.Errorf("number of parsed arguments (%d) differs from the expected, 1", parsedItems)
+	}
+	c.Key = key
+
+	return nil
+}
+
+func (c *DeleteCommand) Exec() ([]byte, error) {
+	c.logger.Debug(fmt.Sprintf("DEL - Key: %s", c.Key))
+	c.storageManager.Delete(c.Key)
+	return []byte("OK\r\n"), nil
 }

@@ -11,6 +11,7 @@ import (
 type Manager interface {
 	Get(key string) (*item.Item, error)
 	Add(item *item.Item) error
+	Delete(key string) error
 }
 
 type SyncMapStorageManager struct {
@@ -51,6 +52,11 @@ func (s *SyncMapStorageManager) Add(item *item.Item) error {
 		return fmt.Errorf("provided key has already been stored: '%s'", item.Key)
 	}
 	s.storageMap.Store(item.Key, item)
+	return nil
+}
+
+func (s *SyncMapStorageManager) Delete(key string) error {
+	s.storageMap.Delete(key) // No confirmation?
 	return nil
 }
 
